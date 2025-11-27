@@ -19,3 +19,294 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+ 
+#### **File 2: agri_sage_agent.py**
+```python
+import asyncio
+import logging
+from typing import Dict, List, Optional
+from dataclasses import dataclass
+from enum import Enum
+import google.generativeai as genai
+
+# Configure logging for observability
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+class CropType(Enum):
+    MAIZE = "maize"
+    TOMATO = "tomato"
+    RICE = "rice"
+    BEANS = "beans"
+
+@dataclass
+class FarmerContext:
+    """Session management for farmer interactions"""
+    farmer_id: str
+    location: str
+    crop_type: CropType
+    language: str = "en"
+    previous_queries: List[str] = None
+    
+    def __post_init__(self):
+        if self.previous_queries is None:
+            self.previous_queries = []
+
+@dataclass
+class WeatherData:
+    """Data structure for weather information"""
+    temperature: float
+    humidity: float
+    rainfall: float
+    forecast: str
+
+class CropDiseaseClassifier:
+    """Custom tool for crop disease classification"""
+    
+    def classify_disease(self, image_path: str, crop_type: CropType) -> Dict:
+        """Custom tool implementation for disease detection"""
+        logger.info(f"Classifying disease for {crop_type.value} from {image_path}")
+        
+        # Simulated disease classification - in practice, use fine-tuned vision model
+        disease_db = {
+            "maize": {
+                "common_rust": {"confidence": 0.85, "symptoms": "Brown pustules on leaves", "treatment": "Apply sulfur-based fungicide"},
+                "leaf_blight": {"confidence": 0.72, "symptoms": "Yellow spots with dark borders", "treatment": "Use copper-based spray"}
+            },
+            "tomato": {
+                "early_blight": {"confidence": 0.88, "symptoms": "Dark spots with concentric rings", "treatment": "Apply baking soda solution"},
+                "late_blight": {"confidence": 0.91, "symptoms": "Water-soaked lesions on leaves", "treatment": "Remove affected plants immediately"}
+            }
+        }
+        
+        # Mock analysis - replace with actual ML model inference
+        return disease_db.get(crop_type.value, {}).get("early_blight", {"confidence": 0.0, "symptoms": "Unknown", "treatment": "Consult local expert"})
+
+class WeatherAnalysisTool:
+    """Custom tool for weather data analysis"""
+    
+    async def get_weather_data(self, location: str) -> WeatherData:
+        """Custom tool for weather API integration"""
+        logger.info(f"WeatherAnalysisTool: Fetching data for {location}")
+        
+        # Simulated API call - replace with actual weather API
+        await asyncio.sleep(0.1)  # Simulate API call
+        return WeatherData(
+            temperature=28.5,
+            humidity=75.0,
+            rainfall=15.0,
+            forecast="Heavy rain expected in 2 days"
+        )
+
+class MarketPriceTool:
+    """Custom tool for market price analysis"""
+    
+    async def get_market_prices(self, crop_type: CropType, location: str) -> Dict:
+        """Custom tool for market data integration"""
+        logger.info(f"MarketPriceTool: Analyzing market for {crop_type.value} in {location}")
+        
+        # Simulated market data - replace with actual market API
+        price_db = {
+            "maize": {"current_price": 45.0, "trend": "increasing", "forecast": "Prices expected to rise 10% in 2 weeks"},
+            "tomato": {"current_price": 80.0, "trend": "decreasing", "forecast": "Prices likely to drop due to high supply"}
+        }
+        
+        await asyncio.sleep(0.1)  # Simulate API call
+        return price_db.get(crop_type.value, {"current_price": 0.0, "trend": "stable", "forecast": "No data available"})
+
+class DiagnosisAgent:
+    """Specialized agent for crop disease diagnosis"""
+    
+    def __init__(self):
+        self.disease_classifier = CropDiseaseClassifier()
+        self.weather_tool = WeatherAnalysisTool()
+        logger.info("DiagnosisAgent initialized")
+    
+    async def diagnose_issue(self, context: FarmerContext, symptoms: str, image_path: Optional[str] = None) -> Dict:
+        """Multi-agent system: Specialized diagnosis agent"""
+        logger.info(f"DiagnosisAgent: Analyzing {context.crop_type.value} issue - {symptoms}")
+        
+        # Analyze image if provided
+        disease_info = {}
+        if image_path:
+            disease_info = self.disease_classifier.classify_disease(image_path, context.crop_type)
+        
+        # Get weather context using custom tool
+        weather_data = await self.weather_tool.get_weather_data(context.location)
+        
+        return {
+            "likely_disease": disease_info,
+            "weather_factors": weather_data,
+            "confidence": disease_info.get("confidence", 0.0),
+            "additional_context": f"Weather: {weather_data.humidity}% humidity, {weather_data.temperature}°C"
+        }
+
+class MarketAgent:
+    """Specialized agent for market analysis"""
+    
+    def __init__(self):
+        self.market_tool = MarketPriceTool()
+        logger.info("MarketAgent initialized")
+    
+    async def analyze_market_opportunities(self, context: FarmerContext) -> Dict:
+        """Multi-agent system: Specialized market agent"""
+        logger.info(f"MarketAgent: Analyzing market for {context.crop_type.value}")
+        
+        market_data = await self.market_tool.get_market_prices(context.crop_type, context.location)
+        
+        recommendations = []
+        if market_data["trend"] == "increasing":
+            recommendations.append("Consider storing harvest for better prices")
+        elif market_data["trend"] == "decreasing":
+            recommendations.append("Sell soon to avoid price drops")
+        else:
+            recommendations.append("Current prices are stable")
+        
+        return {
+            "current_price": market_data["current_price"],
+            "price_trend": market_data["trend"],
+            "forecast": market_data["forecast"],
+            "recommendations": recommendations
+        }
+
+class SynthesisAgent:
+    """Master agent that coordinates all specialized agents"""
+    
+    def __init__(self):
+        self.diagnosis_agent = DiagnosisAgent()
+        self.market_agent = MarketAgent()
+        # Initialize Gemini model for final synthesis
+        self.model = genai.GenerativeModel('gemini-pro')
+        logger.info("SynthesisAgent initialized with Gemini")
+    
+    async def generate_action_plan(self, context: FarmerContext, query: str, image_path: Optional[str] = None) -> str:
+        """Multi-agent coordination and synthesis"""
+        logger.info(f"SynthesisAgent: Generating plan for {context.farmer_id}")
+        
+        # Parallel execution of specialized agents
+        diagnosis_task = asyncio.create_task(
+            self.diagnosis_agent.diagnose_issue(context, query, image_path)
+        )
+        market_task = asyncio.create_task(
+            self.market_agent.analyze_market_opportunities(context)
+        )
+        
+        # Wait for all agents to complete (parallel processing)
+        diagnosis_result, market_result = await asyncio.gather(diagnosis_task, market_task)
+        
+        # Generate comprehensive plan using Gemini
+        plan_prompt = self._create_plan_prompt(context, query, diagnosis_result, market_result)
+        response = self.model.generate_content(plan_prompt)
+        
+        logger.info(f"SynthesisAgent: Plan generated successfully")
+        return response.text
+    
+    def _create_plan_prompt(self, context: FarmerContext, query: str, diagnosis: Dict, market: Dict) -> str:
+        """Context engineering for better Gemini responses"""
+        return f"""
+        You are Agri-Sage, an agricultural expert assistant for smallholder farmers.
+        
+        Farmer Context:
+        - Location: {context.location}
+        - Crop: {context.crop_type.value}
+        - Language: {context.language}
+        - Query: {query}
+        
+        Technical Analysis:
+        - Disease Diagnosis: {diagnosis.get('likely_disease', {})}
+        - Weather Conditions: {diagnosis.get('weather_factors', {})}
+        - Market Analysis: {market}
+        
+        Create a comprehensive, step-by-step action plan for the farmer. The plan should be:
+        1. Practical and actionable with locally available resources
+        2. Written in simple, clear language
+        3. Include both immediate and medium-term actions
+        4. Consider economic implications
+        5. Account for local weather conditions
+        
+        Format the response with clear sections and bullet points. Be empathetic and supportive.
+        """
+
+class GatewayAgent:
+    """Main agent handling farmer interactions and session management"""
+    
+    def __init__(self):
+        self.synthesis_agent = SynthesisAgent()
+        self.sessions: Dict[str, FarmerContext] = {}  # Session state management
+        logger.info("GatewayAgent initialized")
+    
+    async def process_farmer_query(self, farmer_id: str, location: str, crop_type: str, 
+                                 query: str, image_path: Optional[str] = None) -> str:
+        """Main entry point with session management"""
+        # Manage farmer session (memory and state)
+        if farmer_id not in self.sessions:
+            self.sessions[farmer_id] = FarmerContext(
+                farmer_id=farmer_id,
+                location=location,
+                crop_type=CropType(crop_type)
+            )
+            logger.info(f"New session created for farmer {farmer_id}")
+        
+        context = self.sessions[farmer_id]
+        context.previous_queries.append(query)  # Memory bank update
+        
+        logger.info(f"GatewayAgent: Processing query for {farmer_id} - {query[:50]}...")
+        
+        # Generate comprehensive action plan through multi-agent coordination
+        action_plan = await self.synthesis_agent.generate_action_plan(context, query, image_path)
+        
+        logger.info(f"GatewayAgent: Response generated for {farmer_id}")
+        return action_plan
+
+# Demo and testing
+async def main():
+    """Demo function to showcase the multi-agent system"""
+    print("=== AGRI-SAGE AI AGENT DEMO ===")
+    print("Multi-Agent System for Smallholder Farmers")
+    print("Track B: Agents for Good - Kaggle Capstone Project\n")
+    
+    # Initialize the gateway agent
+    gateway = GatewayAgent()
+    
+    # Simulate farmer queries
+    demo_queries = [
+        {
+            "farmer_id": "farmer_001",
+            "location": "Nakuru, Kenya",
+            "crop_type": "tomato",
+            "query": "My tomato leaves have dark spots with concentric rings and are turning yellow. What should I do?",
+            "image": "tomato_leaves.jpg"
+        },
+        {
+            "farmer_id": "farmer_002", 
+            "location": "Embu, Kenya",
+            "crop_type": "maize",
+            "query": "I see brown pustules on my maize leaves. Is this a disease?",
+            "image": "maize_leaves.jpg"
+        }
+    ]
+    
+    for i, query_data in enumerate(demo_queries, 1):
+        print(f"\n--- Demo {i}: {query_data['crop_type'].title()} Farmer ---")
+        print(f"Query: {query_data['query']}")
+        
+        try:
+            response = await gateway.process_farmer_query(
+                farmer_id=query_data["farmer_id"],
+                location=query_data["location"],
+                crop_type=query_data["crop_type"],
+                query=query_data["query"],
+                image_path=query_data["image"]
+            )
+            
+            print(f"\n🤖 AGRI-SAGE RESPONSE:")
+            print(response)
+            print("\n" + "="*60)
+            
+        except Exception as e:
+            logger.error(f"Error processing demo query {i}: {e}")
+            print(f"Sorry, I encountered an error: {e}")
+
+if __name__ == "__main__":
+    # Run the demo
+    asyncio.run(main())
